@@ -56,6 +56,7 @@
     <div class="row"><span>位置精度</span><b id="vLoc">–</b></div>
     <div class="row"><span>穩定度（近 1 秒波動）</span><b id="vJit">–</b></div>
     <div class="meter"><i id="jitBar"></i></div>
+    <div class="note warn" id="locWarn" hidden></div>
   </div>
 
   <button id="btnEnable" class="primary" style="font-size:17px;padding:16px">啟用感測器與定位</button>
@@ -85,6 +86,7 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var D2R = Math.PI / 180;
+  var LOC_WEAK_M = 500;        // 定位精度差於此值時警告
 
   /* ---------- 設定（localStorage，失敗也能用） ---------- */
   var mem = {};
@@ -163,7 +165,13 @@
       $('vJit').textContent = '±' + fmt(s.jitter, 0) + '°';
       $('jitBar').style.width = Math.min(100, s.jitter * 5) + '%';
     }
-    if (loc) $('vLoc').textContent = '±' + fmt(loc.acc, 0) + ' m' + (Date.now() - loc.t > 20000 ? '（較舊）' : '');
+    if (loc) {
+      $('vLoc').textContent = '±' + fmt(loc.acc, 0) + ' m' + (Date.now() - loc.t > 20000 ? '（較舊）' : '');
+      var weak = loc.acc > LOC_WEAK_M;
+      $('vLoc').className = weak ? 'warn' : '';
+      $('locWarn').hidden = !weak;
+      if (weak) $('locWarn').textContent = '⚠️ 定位只有 ±' + fmt(loc.acc, 0) + ' 公尺，航班比對會不準。到空曠處等這個數字降到 ' + LOC_WEAK_M + ' 公尺內再記錄。';
+    }
     if (running) requestAnimationFrame(function () { setTimeout(paint, 120); });
   }
 
@@ -196,7 +204,7 @@
   }
 
   /* ---------- 記錄 ---------- */
-  var busy = false;
+  var busy = false, weakOk = false;
   function record() {
     if (busy) return;
     var s = summary(600);
@@ -209,6 +217,15 @@
     if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
     if (test) { say('測試模式：這次沒有寫入。把上面的數字和你實際的方向比一比。', 'warn'); return; }
 
+    // 定位太差（或沒有定位）：第一次按只警告，6 秒內再按一次才送出
+    if (!loc || loc.acc > LOC_WEAK_M) {
+      if (!weakOk) {
+        weakOk = true; setTimeout(function () { weakOk = false; }, 6000);
+        say(loc ? '定位只有 ±' + fmt(loc.acc, 0) + ' 公尺，航班比對可能不準。仍要記錄請在 6 秒內再按一次。' : '目前沒有定位，這筆不會有航班比對。仍要記錄請在 6 秒內再按一次。', 'warn');
+        return;
+      }
+      weakOk = false;
+    }
     var url = $('url').value.trim(), tok = $('tok').value.trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url)) { say('請先在「設定」填入 Apps Script 網址（結尾是 /exec）。', 'bad'); $('cfg').open = true; return; }
     if (!tok) { say('請先在「設定」填入 TOKEN。', 'bad'); $('cfg').open = true; return; }
