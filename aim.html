@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Plane Aim</title>
+<style>
+  :root{
+    --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781; --line:#e1e0d9;
+    --accent:#2a78d6; --accent-ink:#ffffff; --ok:#006300; --warn:#a85c00; --bad:#b3261e;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781; --line:#2c2c2a;
+      --accent:#3987e5; --accent-ink:#0b0b0b; --ok:#3fbf3f; --warn:#e0a040; --bad:#ff8a80; }
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui,-apple-system,"PingFang TC","Noto Sans TC",sans-serif; }
+  body{ padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); max-width:480px; margin:0 auto; }
+  h1{ font-size:18px; margin:4px 0 2px; }
+  .sub{ color:var(--ink2); font-size:13px; margin:0 0 14px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .k{ color:var(--muted); font-size:12px; }
+  .v{ font-size:34px; font-weight:700; letter-spacing:-.5px; font-variant-numeric:tabular-nums; line-height:1.15; }
+  .v small{ font-size:14px; font-weight:500; color:var(--ink2); margin-left:2px; }
+  .row{ display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--ink2); padding:3px 0; }
+  .row b{ color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
+  button{ appearance:none; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:12px; padding:12px 14px; font:inherit; cursor:pointer; }
+  button.primary{ width:100%; background:var(--accent); color:var(--accent-ink); border-color:transparent; font-weight:700; font-size:20px; padding:20px 14px; }
+  button:disabled{ opacity:.45; cursor:default; }
+  .msg{ font-size:14px; min-height:1.4em; margin:8px 2px; }
+  .ok{ color:var(--ok); } .warn{ color:var(--warn); } .bad{ color:var(--bad); }
+  label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  input[type=text],input[type=password],input[type=number]{ width:100%; padding:10px 12px; font:inherit; font-size:16px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); }
+  .switch{ display:flex; align-items:center; gap:10px; font-size:14px; margin-top:12px; }
+  .switch input{ width:22px; height:22px; }
+  details summary{ cursor:pointer; color:var(--ink2); font-size:14px; padding:2px 0; }
+  .note{ font-size:12px; color:var(--muted); margin-top:8px; }
+  .cap{ font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink2); margin-top:8px; white-space:pre-wrap; }
+  .meter{ height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:6px; }
+  .meter i{ display:block; height:100%; width:0; background:var(--accent); }
+</style>
+</head>
+<body>
+  <h1>✈️ Plane Aim</h1>
+  <p class="sub">把手機背面對準飛機（直立拿著），按「記錄這架」。</p>
+
+  <div class="card" id="live">
+    <div class="grid">
+      <div><div class="k">方位（磁北）</div><div class="v" id="vHead">–<small>°</small></div></div>
+      <div><div class="k">仰角（水平 0°）</div><div class="v" id="vEl">–<small>°</small></div></div>
+    </div>
+    <div class="row" style="margin-top:8px"><span>換算真北方位</span><b id="vTrue">–</b></div>
+    <div class="row"><span>指南針精度</span><b id="vAcc">–</b></div>
+    <div class="row"><span>位置精度</span><b id="vLoc">–</b></div>
+    <div class="row"><span>穩定度（近 1 秒波動）</span><b id="vJit">–</b></div>
+    <div class="meter"><i id="jitBar"></i></div>
+  </div>
+
+  <button id="btnEnable" class="primary" style="font-size:17px;padding:16px">啟用感測器與定位</button>
+  <div style="height:10px"></div>
+  <button id="btnGo" class="primary" disabled>記錄這架</button>
+  <div class="msg" id="msg"></div>
+  <div class="cap" id="cap"></div>
+
+  <div class="card" style="margin-top:14px">
+    <details id="cfg">
+      <summary>設定</summary>
+      <label for="url">Apps Script 網址（結尾是 /exec）</label>
+      <input type="text" id="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
+      <label for="tok">TOKEN（只存在這支手機的瀏覽器）</label>
+      <input type="password" id="tok" autocomplete="off">
+      <label for="decl">磁偏角（度，東為正；台灣約 −4.5）</label>
+      <input type="number" id="decl" step="0.1" value="-4.5">
+      <div class="switch"><input type="checkbox" id="test" checked><label for="test" style="margin:0;font-size:14px;color:var(--ink)">測試模式（只顯示數值，不寫入 Sheet）</label></div>
+      <div style="height:10px"></div>
+      <button id="btnSave" style="width:100%">儲存設定</button>
+      <p class="note">測試模式建議先開著：對著已知方向（例如遠處大樓或山）看數值準不準，再關掉開始正式記錄。</p>
+    </details>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var D2R = Math.PI / 180;
+
+  /* ---------- 設定（localStorage，失敗也能用） ---------- */
+  var mem = {};
+  function lsGet(k) { try { var v = localStorage.getItem(k); return v === null ? (mem[k] || '') : v; } catch (e) { return mem[k] || ''; } }
+  function lsSet(k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) {} }
+  function loadCfg() {
+    $('url').value = lsGet('aim.url');
+    $('tok').value = lsGet('aim.tok');
+    var d = lsGet('aim.decl'); if (d !== '') $('decl').value = d;
+    var t = lsGet('aim.test'); $('test').checked = (t === '' ? true : t === '1');
+  }
+  function saveCfg() {
+    lsSet('aim.url', $('url').value.trim());
+    lsSet('aim.tok', $('tok').value.trim());
+    lsSet('aim.decl', String($('decl').value));
+    lsSet('aim.test', $('test').checked ? '1' : '0');
+    say('設定已儲存', 'ok');
+  }
+  function say(t, cls) { var m = $('msg'); m.textContent = t; m.className = 'msg ' + (cls || ''); }
+
+  /* ---------- 感測器 ---------- */
+  var samples = [];            // {t, head, el, acc}
+  var loc = null;              // {lat, lon, acc, t}
+  var running = false;
+  var lastHeadAt = 0;
+
+  function norm360(a) { a = a % 360; return a < 0 ? a + 360 : a; }
+  function angDiff(a, b) { var d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+
+  // 背面鏡頭朝向的仰角：水平 0、頭頂 90、朝地 −90。由 beta / gamma 算出
+  function elevationFrom(beta, gamma) {
+    var z = -Math.cos(beta * D2R) * Math.cos(gamma * D2R);
+    z = Math.max(-1, Math.min(1, z));
+    return Math.asin(z) / D2R;
+  }
+
+  function onOrient(e) {
+    var head = null, acc = null;
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      head = e.webkitCompassHeading; acc = (typeof e.webkitCompassAccuracy === 'number') ? e.webkitCompassAccuracy : null;
+    } else if (e.absolute === true && typeof e.alpha === 'number') {
+      head = norm360(360 - e.alpha);        // Android 等：alpha 為絕對方位時
+    }
+    if (head === null || typeof e.beta !== 'number' || typeof e.gamma !== 'number') return;
+    var now = Date.now();
+    samples.push({ t: now, head: norm360(head), el: elevationFrom(e.beta, e.gamma), acc: acc });
+    while (samples.length && now - samples[0].t > 1500) samples.shift();
+    lastHeadAt = now;
+  }
+
+  // 近 windowMs 內的環形平均；回傳 {head, el, jitter, n, acc}
+  function summary(windowMs) {
+    var now = Date.now(), s = samples.filter(function (x) { return now - x.t <= windowMs; });
+    if (!s.length) return null;
+    var sx = 0, sy = 0, el = 0, acc = null;
+    s.forEach(function (x) { sx += Math.cos(x.head * D2R); sy += Math.sin(x.head * D2R); el += x.el; if (x.acc !== null) acc = x.acc; });
+    var head = norm360(Math.atan2(sy, sx) / D2R), jitter = 0;
+    s.forEach(function (x) { jitter = Math.max(jitter, angDiff(x.head, head)); });
+    return { head: head, el: el / s.length, jitter: jitter, n: s.length, acc: acc };
+  }
+
+  function fmt(n, d) { return (Math.round(n * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
+
+  function paint() {
+    var s = summary(500);
+    var fresh = Date.now() - lastHeadAt < 1500;
+    if (!s || !fresh) {
+      $('vHead').firstChild.nodeValue = '–'; $('vEl').firstChild.nodeValue = '–';
+      $('vTrue').textContent = '–'; $('vJit').textContent = '–'; $('jitBar').style.width = '0';
+    } else {
+      var decl = parseFloat($('decl').value) || 0;
+      $('vHead').firstChild.nodeValue = fmt(s.head, 0);
+      $('vEl').firstChild.nodeValue = fmt(s.el, 0);
+      $('vTrue').textContent = fmt(norm360(s.head + decl), 0) + '°';
+      $('vAcc').textContent = s.acc === null ? '（無）' : (s.acc < 0 ? '未校準' : '±' + fmt(s.acc, 0) + '°');
+      $('vJit').textContent = '±' + fmt(s.jitter, 0) + '°';
+      $('jitBar').style.width = Math.min(100, s.jitter * 5) + '%';
+    }
+    if (loc) $('vLoc').textContent = '±' + fmt(loc.acc, 0) + ' m' + (Date.now() - loc.t > 20000 ? '（較舊）' : '');
+    if (running) requestAnimationFrame(function () { setTimeout(paint, 120); });
+  }
+
+  function startLocation() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.watchPosition(function (p) {
+      loc = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, t: Date.now() };
+    }, function (err) {
+      $('vLoc').textContent = '取不到（' + (err && err.code === 1 ? '未允許' : '逾時') + '）';
+    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  }
+
+  function enable() {
+    var go = function () {
+      window.addEventListener('deviceorientation', onOrient, true);
+      if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOrient, true);
+      running = true; startLocation(); paint();
+      $('btnGo').disabled = false; $('btnEnable').style.display = 'none';
+      say('感測器已啟用。直立拿著手機，背面對準飛機。', 'ok');
+      setTimeout(function () {
+        if (!lastHeadAt) say('讀不到方向資料：請確認「設定 → Safari → 動作與方向存取」已開啟，再重新整理。', 'bad');
+      }, 2500);
+    };
+    var DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === 'function') {
+      DOE.requestPermission().then(function (r) {
+        if (r === 'granted') go(); else say('你拒絕了動作與方向存取。到 設定 → Safari → 動作與方向存取 開啟，再重新整理。', 'bad');
+      }).catch(function (e) { say('要求權限失敗：' + e, 'bad'); });
+    } else go();
+  }
+
+  /* ---------- 記錄 ---------- */
+  var busy = false;
+  function record() {
+    if (busy) return;
+    var s = summary(600);
+    if (!s || Date.now() - lastHeadAt > 1500) { say('還沒有方向資料，請先讓手機動一動。', 'warn'); return; }
+    if (s.n < 3) { say('資料太少，再穩住一下。', 'warn'); return; }
+    var test = $('test').checked;
+    var cap = '方位 ' + fmt(s.head, 1) + '°（磁北）／ 仰角 ' + fmt(s.el, 1) + '°／波動 ±' + fmt(s.jitter, 1) + '°' +
+      (s.acc !== null ? '／指南針 ±' + fmt(s.acc, 0) + '°' : '') + (loc ? '\n位置 ' + fmt(loc.lat, 5) + ', ' + fmt(loc.lon, 5) + ' ±' + fmt(loc.acc, 0) + ' m' : '\n位置：無');
+    $('cap').textContent = cap;
+    if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
+    if (test) { say('測試模式：這次沒有寫入。把上面的數字和你實際的方向比一比。', 'warn'); return; }
+
+    var url = $('url').value.trim(), tok = $('tok').value.trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url)) { say('請先在「設定」填入 Apps Script 網址（結尾是 /exec）。', 'bad'); $('cfg').open = true; return; }
+    if (!tok) { say('請先在「設定」填入 TOKEN。', 'bad'); $('cfg').open = true; return; }
+
+    var body = {
+      token: tok, source: 'precision', type: '客機', time_iso: isoNow(),
+      heading: round1(s.head), heading_ref: 'magnetic', pitch: round1(s.el)
+    };
+    if (s.acc !== null && s.acc >= 0) body.accuracy = round1(s.acc);
+    if (loc && Date.now() - loc.t < 60000) { body.latitude = loc.lat; body.longitude = loc.lon; if (!body.accuracy) body.accuracy = round1(loc.acc); }
+
+    busy = true; $('btnGo').disabled = true; say('送出中…');
+    var ctl = ('AbortController' in window) ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 25000);
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var j; try { j = JSON.parse(t); } catch (e) { throw new Error('回應不是 JSON（可能部署權限不是「任何人」）'); }
+        if (j && j.ok) say(j.message || '已記錄', j.duplicate ? 'warn' : 'ok'); else say('失敗：' + ((j && (j.error || j.message)) || '未知原因'), 'bad');
+      })
+      .catch(function (e) { say('送出失敗：' + (e && e.name === 'AbortError' ? '逾時' : e.message || e), 'bad'); })
+      .then(function () { clearTimeout(timer); busy = false; $('btnGo').disabled = false; });
+  }
+  function round1(n) { return Math.round(n * 10) / 10; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function isoNow() {   // 本機時間（含時區偏移）
+    var d = new Date(), off = -d.getTimezoneOffset(), a = Math.abs(off);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) +
+      (off >= 0 ? '+' : '-') + pad(Math.floor(a / 60)) + ':' + pad(a % 60);
+  }
+
+  $('btnEnable').addEventListener('click', enable);
+  $('btnGo').addEventListener('click', record);
+  $('btnSave').addEventListener('click', saveCfg);
+  loadCfg();
+  if (!lsGet('aim.url')) $('cfg').open = true;
+  window.__aim = { onOrient: onOrient, summary: summary };   // 測試用
+})();
+</script>
+</body>
+</html>
