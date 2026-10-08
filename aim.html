@@ -65,6 +65,13 @@
   <div class="msg" id="msg"></div>
   <div class="cap" id="cap"></div>
 
+  <div class="card" id="truthBox" hidden>
+    <label for="truth" style="margin-top:0">實際航班（選填，例如對照其他 App 看到的呼號）</label>
+    <input type="text" id="truth" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="例如 CAL130 或 B-18111">
+    <div style="height:8px"></div>
+    <button id="btnTruth" style="width:100%">儲存實際航班</button>
+  </div>
+
   <div class="card" style="margin-top:14px">
     <details id="cfg">
       <summary>設定</summary>
@@ -204,7 +211,7 @@
   }
 
   /* ---------- 記錄 ---------- */
-  var busy = false, weakOk = false;
+  var busy = false, weakOk = false, lastIso = '';
   function record() {
     if (busy) return;
     var s = summary(600);
@@ -244,10 +251,30 @@
       .then(function (r) { return r.text(); })
       .then(function (t) {
         var j; try { j = JSON.parse(t); } catch (e) { throw new Error('回應不是 JSON（可能部署權限不是「任何人」）'); }
-        if (j && j.ok) say(j.message || '已記錄', j.duplicate ? 'warn' : 'ok'); else say('失敗：' + ((j && (j.error || j.message)) || '未知原因'), 'bad');
+        if (j && j.ok) {
+          say(j.message || '已記錄', j.duplicate ? 'warn' : 'ok');
+          if (!j.duplicate) { lastIso = body.time_iso; $('truth').value = ''; $('truthBox').hidden = false; }
+        } else say('失敗：' + ((j && (j.error || j.message)) || '未知原因'), 'bad');
       })
       .catch(function (e) { say('送出失敗：' + (e && e.name === 'AbortError' ? '逾時' : e.message || e), 'bad'); })
       .then(function () { clearTimeout(timer); busy = false; $('btnGo').disabled = false; });
+  }
+  var truthBusy = false;
+  function sendTruth() {
+    if (truthBusy || !lastIso) return;
+    var url = $('url').value.trim(), tok = $('tok').value.trim(), v = $('truth').value.trim();
+    if (!v) { say('請先輸入實際航班。', 'warn'); return; }
+    truthBusy = true; $('btnTruth').disabled = true; say('儲存中…');
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow',
+      body: JSON.stringify({ token: tok, action: 'setTruth', time_iso: lastIso, truth: v }) })
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var j; try { j = JSON.parse(t); } catch (e) { throw new Error('回應不是 JSON'); }
+        if (j && j.ok) { say(j.message || '已儲存', j.hit === 'N' ? 'warn' : 'ok'); $('truthBox').hidden = true; }
+        else say('失敗：' + ((j && (j.error || j.message)) || '未知原因'), 'bad');
+      })
+      .catch(function (e) { say('儲存失敗：' + (e.message || e), 'bad'); })
+      .then(function () { truthBusy = false; $('btnTruth').disabled = false; });
   }
   function round1(n) { return Math.round(n * 10) / 10; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -260,6 +287,7 @@
   $('btnEnable').addEventListener('click', enable);
   $('btnGo').addEventListener('click', record);
   $('btnSave').addEventListener('click', saveCfg);
+  $('btnTruth').addEventListener('click', sendTruth);
   loadCfg();
   if (!lsGet('aim.url')) $('cfg').open = true;
   window.__aim = { onOrient: onOrient, summary: summary };   // 測試用
